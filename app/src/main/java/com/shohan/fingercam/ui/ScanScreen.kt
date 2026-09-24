@@ -4,8 +4,10 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.BitmapRegionDecoder
+import android.graphics.ImageFormat
+import android.graphics.Matrix
 import android.graphics.Rect
+import android.graphics.YuvImage
 import android.view.MotionEvent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -53,9 +55,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 
-/** Side of the analysed square, as a fraction of the photo's short side. */
 private const val CROP_FRACTION = 0.35f
 
 @Composable
@@ -76,61 +78,36 @@ fun ScanScreen(
                 PackageManager.PERMISSION_GRANTED
         )
     }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { result ->
-        granted = result
-    }
-    LaunchedEffect(Unit) {
-        if (!granted) launcher.launch(Manifest.permission.CAMERA)
-    }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
+    LaunchedEffect(Unit) { if (!granted) launcher.launch(Manifest.permission.CAMERA) }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.White)
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+        modifier = Modifier.fillMaxSize().background(Color.White).verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
-
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         if (granted) {
-            CameraBox(busy = busy, onCaptureStart = onCaptureStart, onCaptured = onCaptured)
+            CameraBox(busy, onCaptureStart, onCaptured)
         } else {
             Text("স্ক্যান করতে ক্যামেরার অনুমতি লাগবে।", style = MaterialTheme.typography.bodyMedium)
-            Button(
-                onClick = { launcher.launch(Manifest.permission.CAMERA) },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("অনুমতি দিন") }
+            Button(onClick = { launcher.launch(Manifest.permission.CAMERA) }, modifier = Modifier.fillMaxWidth()) {
+                Text("অনুমতি দিন")
+            }
         }
-
-        banner?.let { ResultBanner(banner = it, onDismiss = onDismissBanner) }
-
-        Text(text = hint, style = MaterialTheme.typography.bodySmall)
-
-        OutlinedButton(
-            onClick = onCancel,
-            border = BorderStroke(1.dp, Color.Black),
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("বাতিল") }
+        banner?.let { ResultBanner(it, onDismissBanner) }
+        Text(hint, style = MaterialTheme.typography.bodySmall)
+        OutlinedButton(onClick = onCancel, border = BorderStroke(1.dp, Color.Black), modifier = Modifier.fillMaxWidth()) {
+            Text("বাতিল")
+        }
     }
 }
 
 @Composable
-private fun CameraBox(
-    busy: Boolean,
-    onCaptureStart: () -> Unit,
-    onCaptured: (Bitmap?) -> Unit
-) {
+private fun CameraBox(busy: Boolean, onCaptureStart: () -> Unit, onCaptured: (Bitmap?) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val previewView = remember {
-        PreviewView(context).apply {
-            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-        }
+        PreviewView(context).apply { implementationMode = PreviewView.ImplementationMode.COMPATIBLE }
     }
     val imageCapture = remember {
         ImageCapture.Builder()
@@ -150,12 +127,7 @@ private fun CameraBox(
             val preview = Preview.Builder().build()
             preview.setSurfaceProvider(previewView.surfaceProvider)
             bound.unbindAll()
-            camera = bound.bindToLifecycle(
-                lifecycleOwner,
-                CameraSelector.DEFAULT_BACK_CAMERA,
-                preview,
-                imageCapture
-            )
+            camera = bound.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture)
         }, ContextCompat.getMainExecutor(context))
         onDispose {
             provider?.unbindAll()
@@ -163,25 +135,16 @@ private fun CameraBox(
         }
     }
 
-    LaunchedEffect(camera, torchOn) {
-        camera?.cameraControl?.enableTorch(torchOn)
-    }
+    LaunchedEffect(camera, torchOn) { camera?.cameraControl?.enableTorch(torchOn) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(3f / 4f)
-            .background(Color.Black)
-    ) {
+    Box(modifier = Modifier.fillMaxWidth().aspectRatio(3f / 4f).background(Color.Black)) {
         AndroidView(
             factory = {
                 previewView.apply {
                     setOnTouchListener { view, event ->
                         if (event.action == MotionEvent.ACTION_UP) {
                             val point = meteringPointFactory.createPoint(event.x, event.y)
-                            camera?.cameraControl?.startFocusAndMetering(
-                                FocusMeteringAction.Builder(point).build()
-                            )
+                            camera?.cameraControl?.startFocusAndMetering(FocusMeteringAction.Builder(point).build())
                             view.performClick()
                         }
                         true
@@ -192,53 +155,28 @@ private fun CameraBox(
         )
         Canvas(modifier = Modifier.matchParentSize()) {
             val diameter = size.width * CROP_FRACTION
-            drawCircle(
-                color = Color.White,
-                radius = diameter / 2f,
-                style = Stroke(width = 3.dp.toPx())
-            )
+            drawCircle(Color.White, diameter / 2f, style = Stroke(width = 3.dp.toPx()))
         }
-        if (busy) {
-            CircularProgressIndicator(
-                color = Color.White,
-                modifier = Modifier.align(Alignment.Center)
-            )
-        }
+        if (busy) CircularProgressIndicator(color = Color.White, modifier = Modifier.align(Alignment.Center))
     }
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         OutlinedButton(
             onClick = { torchOn = !torchOn },
             border = BorderStroke(1.dp, Color.Black),
             modifier = Modifier.weight(1f)
         ) { Text(if (torchOn) "টর্চ বন্ধ" else "টর্চ চালু") }
-
         Button(
             onClick = {
                 if (!busy) {
                     onCaptureStart()
-                    imageCapture.takePicture(
-                        worker,
-                        object : ImageCapture.OnImageCapturedCallback() {
-                            override fun onCaptureSuccess(image: ImageProxy) {
-                                val bitmap = try {
-                                    decodeCenter(image)
-                                } catch (e: Exception) {
-                                    null
-                                } finally {
-                                    image.close()
-                                }
-                                onCaptured(bitmap)
-                            }
-
-                            override fun onError(exception: ImageCaptureException) {
-                                onCaptured(null)
-                            }
+                    imageCapture.takePicture(worker, object : ImageCapture.OnImageCapturedCallback() {
+                        override fun onCaptureSuccess(image: ImageProxy) {
+                            val bitmap = try { decodeAndCrop(image) } catch (_: Throwable) { null } finally { image.close() }
+                            onCaptured(bitmap)
                         }
-                    )
+                        override fun onError(exception: ImageCaptureException) { onCaptured(null) }
+                    })
                 }
             },
             enabled = !busy && camera != null,
@@ -247,19 +185,48 @@ private fun CameraBox(
     }
 }
 
-/** Decodes only the centre square of the JPEG (full resolution) to save memory. */
-@Suppress("DEPRECATION")
-private fun decodeCenter(image: ImageProxy): Bitmap? {
-    val buffer = image.planes[0].buffer
-    val bytes = ByteArray(buffer.remaining())
-    buffer.get(bytes)
-    val decoder = BitmapRegionDecoder.newInstance(bytes, 0, bytes.size, false) ?: return null
-    return try {
-        val side = (minOf(decoder.width, decoder.height) * CROP_FRACTION).toInt()
-        val left = (decoder.width - side) / 2
-        val top = (decoder.height - side) / 2
-        decoder.decodeRegion(Rect(left, top, left + side, top + side), BitmapFactory.Options())
-    } finally {
-        decoder.recycle()
+/** Converts the actual YUV_420_888 callback to JPEG, rotates it, then crops the centre guide area. */
+private fun decodeAndCrop(image: ImageProxy): Bitmap? {
+    val y = image.planes[0]
+    val u = image.planes[1]
+    val v = image.planes[2]
+    val width = image.width
+    val height = image.height
+    val nv21 = ByteArray(width * height + width * height / 2)
+    copyPlane(y, width, height, nv21, 0, 1)
+    copyPlane(v, width / 2, height / 2, nv21, width * height, 2)
+    copyPlane(u, width / 2, height / 2, nv21, width * height + 1, 2)
+
+    val jpeg = ByteArrayOutputStream()
+    YuvImage(nv21, ImageFormat.NV21, width, height, null).compressToJpeg(Rect(0, 0, width, height), 96, jpeg)
+    val decoded = BitmapFactory.decodeByteArray(jpeg.toByteArray(), 0, jpeg.size()) ?: return null
+    val rotated = if (image.imageInfo.rotationDegrees == 0) decoded else {
+        val matrix = Matrix().apply { postRotate(image.imageInfo.rotationDegrees.toFloat()) }
+        Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true).also { decoded.recycle() }
+    }
+    val side = (minOf(rotated.width, rotated.height) * CROP_FRACTION).toInt().coerceAtLeast(80)
+    val left = (rotated.width - side) / 2
+    val top = (rotated.height - side) / 2
+    return Bitmap.createBitmap(rotated, left, top, side, side).also {
+        if (it !== rotated) rotated.recycle()
+    }
+}
+
+private fun copyPlane(plane: ImageProxy.PlaneProxy, planeWidth: Int, planeHeight: Int, output: ByteArray, offset: Int, outputPixelStride: Int) {
+    val buffer = plane.buffer.duplicate()
+    val rowStride = plane.rowStride
+    val pixelStride = plane.pixelStride
+    val row = ByteArray((planeWidth - 1) * pixelStride + 1)
+    var out = offset
+    for (y in 0 until planeHeight) {
+        buffer.position(y * rowStride)
+        buffer.get(row, 0, minOf(row.size, buffer.remaining()))
+        for (x in 0 until planeWidth) {
+            val index = x * pixelStride
+            if (index < row.size && out < output.size) {
+                output[out] = row[index]
+                out += outputPixelStride
+            }
+        }
     }
 }

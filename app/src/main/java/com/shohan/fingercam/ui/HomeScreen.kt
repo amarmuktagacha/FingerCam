@@ -137,6 +137,10 @@ private fun HomeContent(
                 text = "ক্যামেরায় আঙুলের ডগার ছবি তুলে সংরক্ষণ করুন, তারপর আবার ছবি তুলে মিলিয়ে দেখুন।",
                 style = MaterialTheme.typography.bodySmall
             )
+            Text(
+                text = "ভালো আলো, পরিষ্কার ফোকাস এবং একই আঙুলের ৩টি নমুনা দিলে ফল সবচেয়ে নির্ভরযোগ্য হবে।",
+                style = MaterialTheme.typography.bodySmall
+            )
 
             banner?.let { ResultBanner(banner = it, onDismiss = onDismissBanner) }
 
@@ -158,12 +162,12 @@ private fun HomeContent(
             ) {
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                     Text(
-                        text = "মেলার সীমা: ${sliderValue.toInt()}",
+                        text = "বিশ্বাসযোগ্যতার সীমা: ${sliderValue.toInt()}/100",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "স্কোর এই সীমার সমান বা বেশি হলে “মিলেছে”। কম করলে সহজে মিলবে, বেশি করলে কড়াকড়ি হবে।",
+                        text = "স্কোর সীমার সমান বা বেশি হলে “মিলেছে”। বেশি সীমা false match কমায়, তবে ছবি পরিষ্কার হওয়া জরুরি।",
                         style = MaterialTheme.typography.bodySmall
                     )
                     Slider(

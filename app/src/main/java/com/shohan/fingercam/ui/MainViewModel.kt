@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 const val SAMPLES_NEEDED = 3
 
@@ -152,9 +153,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         val limit = threshold.value
         val best = withContext(Dispatchers.Default) {
-            mode.record.templates.split("|").maxOfOrNull { encoded ->
-                FingerprintEngine.score(template, Template.decode(encoded))
-            } ?: 0
+            val scores = mode.record.templates.split("|").mapNotNull { encoded ->
+                runCatching { FingerprintEngine.score(template, Template.decode(encoded)) }.getOrNull()
+            }.sortedDescending()
+            // A genuine finger should agree with more than one registration view;
+            // averaging the two strongest views is safer than trusting one lucky match.
+            when {
+                scores.isEmpty() -> 0
+                scores.size == 1 -> scores[0]
+                else -> ((scores[0] + scores[1]) / 2.0).roundToInt()
+            }
         }
         val matched = best >= limit
         dao.updateResult(
