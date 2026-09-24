@@ -9,6 +9,7 @@ import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.MatOfDMatch
+import org.opencv.core.MatOfDouble
 import org.opencv.core.MatOfKeyPoint
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.Point
@@ -96,14 +97,14 @@ object FingerprintEngine {
             clahe.apply(small, equalized)
 
             // Reject frames that are almost uniformly lit or badly out of focus.
-            val mean = Mat()
-            val std = Mat()
+            val mean = MatOfDouble()
+            val std = MatOfDouble()
             Core.meanStdDev(equalized, mean, std)
             val contrast = if (std.empty()) 0.0 else std.get(0, 0)[0]
             mean.release(); std.release()
             Imgproc.Laplacian(equalized, laplacian, CvType.CV_64F)
-            val lapStd = Mat()
-            val lapMean = Mat()
+            val lapStd = MatOfDouble()
+            val lapMean = MatOfDouble()
             Core.meanStdDev(laplacian, lapMean, lapStd)
             val focus = if (lapStd.empty()) 0.0 else lapStd.get(0, 0)[0]
             lapStd.release(); lapMean.release()
