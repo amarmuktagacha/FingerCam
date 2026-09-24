@@ -67,10 +67,9 @@ fun HomeScreen(viewModel: MainViewModel) {
         }
         val hint = when (mode) {
             is ScanMode.Register ->
-                "আঙুলের ডগা বৃত্তের ভেতরে রাখুন। প্রতিবার আঙুল একটু আলাদা অবস্থানে রেখে মোট $SAMPLES_NEEDED টি ছবি তুলুন। " +
-                    "স্ক্রিনে ট্যাপ করে ফোকাস করুন এবং আঙুলের রেখাগুলো পরিষ্কার দেখা গেলে ছবি তুলুন।"
+                "আঙুলের ডগা বৃত্তের ভেতরে স্থির রাখুন। পরিষ্কার frame পেলেই auto-scan হবে; পরের নমুনার জন্য আঙুল সামান্য সরান। মোট $SAMPLES_NEEDED টি নমুনা নেওয়া হবে।"
             is ScanMode.Verify ->
-                "যে আঙুল সংরক্ষণ করেছিলেন সেটি বৃত্তের ভেতরে রাখুন। ফোকাস ঠিক না হলে স্ক্রিনে ট্যাপ করুন, তারপর ছবি তুলুন।"
+                "সংরক্ষিত একই আঙুল বৃত্তের ভেতরে ধরে রাখুন। পরিষ্কার frame পেলেই live verification চলবে এবং মিললে নিজে থেমে যাবে।"
         }
         ScanScreen(
             title = title,
@@ -78,8 +77,7 @@ fun HomeScreen(viewModel: MainViewModel) {
             busy = busy,
             banner = banner,
             onDismissBanner = { viewModel.dismissBanner() },
-            onCaptureStart = { viewModel.beginCapture() },
-            onCaptured = { viewModel.onCaptured(it) },
+            onCaptured = { viewModel.onLiveFrame(it) },
             onCancel = { viewModel.cancelScan() }
         )
     } else {

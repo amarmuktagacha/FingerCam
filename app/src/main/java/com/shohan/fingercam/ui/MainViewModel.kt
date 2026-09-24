@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 const val SAMPLES_NEEDED = 3
 
@@ -50,6 +52,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
+
+    private val liveProcessing = AtomicBoolean(false)
+    private val lastLiveFrameAt = AtomicLong(0L)
 
     fun dismissBanner() {
         _banner.value = null
@@ -85,6 +90,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun beginCapture() {
         _busy.value = true
+    }
+
+    /** Receives frames continuously from CameraX; poor/duplicate frames are ignored. */
+    fun onLiveFrame(bitmap: Bitmap?) {
+        if (bitmap == null) return
+        val now = System.currentTimeMillis()
+        if (now - lastLiveFrameAt.get() < 750L || !liveProcessing.compareAndSet(false, true)) {
+            bitmap.recycle()
+            return
+        }
+        lastLiveFrameAt.set(now)
+        val mode = _scanMode.value
+        if (mode == null) {
+            bitmap.recycle()
+            liveProcessing.set(false)
+            return
+        }
+        _busy.value = true
+        viewModelScope.launch {
+            val template = withContext(Dispatchers.Default) {
+                try { FingerprintEngine.extract(bitmap) } catch (_: Throwable) { null } finally { bitmap.recycle() }
+            }
+            when (val currentMode = _scanMode.value) {
+                is ScanMode.Register -> handleRegister(currentMode, template)
+                is ScanMode.Verify -> handleVerify(currentMode, template, quietMismatch = true)
+                null -> Unit
+            }
+            _busy.value = false
+            liveProcessing.set(false)
+        }
     }
 
     // --------------------------------------------------------------- captured
@@ -146,9 +181,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         show("সংরক্ষিত হয়েছে", "“${mode.name}” সংরক্ষণ করা হয়েছে। এখন যাচাই করে দেখুন।", true)
     }
 
-    private suspend fun handleVerify(mode: ScanMode.Verify, template: Template?) {
+    private suspend fun handleVerify(mode: ScanMode.Verify, template: Template?, quietMismatch: Boolean = false) {
         if (template == null) {
-            showError("আঙুলের রেখা পড়া যায়নি। ফোকাস ঠিক করে, আলো বাড়িয়ে আবার তুলুন।")
+            if (!quietMismatch) showError("আঙুলের রেখা পড়া যায়নি। ফোকাস ঠিক করে, আলো বাড়িয়ে আবার তুলুন।")
             return
         }
         val limit = threshold.value
@@ -174,7 +209,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _scanMode.value = null
         if (matched) {
             show("মিলেছে", "“${mode.record.name}” — স্কোর $best (সীমা $limit)", true)
-        } else {
+        } else if (!quietMismatch) {
             show("মেলেনি", "“${mode.record.name}” — স্কোর $best (সীমা $limit)", false)
         }
     }
